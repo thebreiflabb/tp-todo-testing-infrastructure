@@ -98,19 +98,35 @@ Resources:
     Type: AWS::ECR::Repository
     DeletionPolicy: Retain
 
-  DeploymentPipeline:
+  FrontendDeploymentPipeline:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/deployment-pipeline.yaml"
       Parameters:
+        Name: frontend
         Cluster: !GetAtt Cluster.Outputs.ClusterName
-        Service: !GetAtt Service.Outputs.Service
+        Service: !GetAtt FrontendService.Outputs.Service
         GitHubUser: !Ref GitHubUser
         GitHubToken: !Ref GitHubToken
         GitHubRepo: !Ref GitHubRepo
         GitHubBranch: !Ref GitHubBranch
-        FrontendRepository: !Ref FrontendRepository
-        APIRepository: !Ref APIRepository
+        Repository: !Ref FrontendRepository
+        FolderPath: frontend
+
+  APIDeploymentPipeline:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/deployment-pipeline.yaml"
+      Parameters:
+        Name: api
+        Cluster: !GetAtt Cluster.Outputs.ClusterName
+        Service: !GetAtt APIService.Outputs.Service
+        GitHubUser: !Ref GitHubUser
+        GitHubToken: !Ref GitHubToken
+        GitHubRepo: !Ref GitHubRepo
+        GitHubBranch: !Ref GitHubBranch
+        Repository: !Ref FrontendRepository
+        FolderPath: api
 
   LoadBalancer:
     Type: AWS::CloudFormation::Stack
@@ -167,6 +183,10 @@ Outputs:
     Description: The sample service that is being continuously deployed.
     Value: !GetAtt LoadBalancer.Outputs.ServiceUrl
 
-  PipelineUrl:
-    Description: The continuous deployment pipeline in the AWS Management Console.
-    Value: !GetAtt DeploymentPipeline.Outputs.PipelineUrl
+  FrontendPipelineUrl:
+    Description: The frontend continuous deployment pipeline in the AWS Management Console.
+    Value: !GetAtt FrontendDeploymentPipeline.Outputs.PipelineUrl
+
+  APIPipelineUrl:
+    Description: The api continuous deployment pipeline in the AWS Management Console.
+    Value: !GetAtt APIDeploymentPipeline.Outputs.PipelineUrl

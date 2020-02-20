@@ -3,6 +3,9 @@ AWSTemplateFormatVersion: 2010-09-09
 
 
 Parameters:
+  Name:
+    Type: String
+
   GitHubRepo:
     Type: String
 
@@ -21,11 +24,11 @@ Parameters:
 
   Service:
     Type: String
-  
-  FrontendRepository:
+
+  Repository:
     Type: String
 
-  APIRepository:
+  FolderPath:
     Type: String
 
 
@@ -59,17 +62,7 @@ Resources:
                   - s3:GetObject
                   - s3:PutObject
                   - s3:GetObjectVersion
-              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${FrontendRepository}
-                Effect: Allow
-                Action:
-                  - ecr:GetDownloadUrlForLayer
-                  - ecr:BatchGetImage
-                  - ecr:BatchCheckLayerAvailability
-                  - ecr:PutImage
-                  - ecr:InitiateLayerUpload
-                  - ecr:UploadLayerPart
-                  - ecr:CompleteLayerUpload
-              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${APIRepository}
+              - Resource: !Sub arn:aws:ecr:${AWS::Region}:${AWS::AccountId}:repository/${Repository}
                 Effect: Allow
                 Action:
                   - ecr:GetDownloadUrlForLayer
@@ -128,27 +121,7 @@ Resources:
         Type: CODEPIPELINE
       Source:
         Type: CODEPIPELINE
-        BuildSpec: |
-          version: 0.2
-          phases:
-            pre_build:
-              commands:
-                - $(aws ecr get-login --no-include-email)
-                - TAG="$(echo $CODEBUILD_RESOLVED_SOURCE_VERSION | head -c 8)"
-                - FRONTENDIMAGE="${FRONTEND_REPOSITORY_URI}"
-                - APIIMAGE_URI="${API_REPOSITORY_URI}:${TAG}"
-            build:
-              commands:
-                - docker build --tag "$APIIMAGE_URI" api
-                - docker build --tag "${FRONTENDIMAGE}-builder:${TAG}" -f frontend/Dockerfile.build frontend
-                - docker build --tag "${FRONTENDIMAGE}:${TAG}" --build-arg "img=${FRONTENDIMAGE}-builder:${TAG}" frontend
-            post_build:
-              commands:
-                - docker push "$APIIMAGE_URI"
-                - docker push "${FRONTENDIMAGE}:${TAG}"
-                - printf '[{"name":"frontend","imageUri":"%s"}, {"name":"api","imageUri":"%s"}]' "${FRONTENDIMAGE}:${TAG}" "$APIIMAGE_URI" > images.json
-          artifacts:
-            files: images.json
+        BuildSpec: !Sub ${FolderPath}/buildspec.yml
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/docker:17.09.0
@@ -156,16 +129,15 @@ Resources:
         EnvironmentVariables:
           - Name: AWS_DEFAULT_REGION
             Value: !Ref AWS::Region
-          - Name: FRONTEND_REPOSITORY_URI
-            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${FrontendRepository}
-          - Name: API_REPOSITORY_URI
-            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${APIRepository}
-      Name: !Ref AWS::StackName
+          - Name: REPOSITORY_URI
+            Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
+      Name: !Sub ${AWS::StackName}-${Name}
       ServiceRole: !Ref CodeBuildServiceRole
 
   Pipeline:
     Type: AWS::CodePipeline::Pipeline
     Properties:
+      Name: !Sub ${AWS::StackName}-${Name}
       RoleArn: !GetAtt CodePipelineServiceRole.Arn
       ArtifactStore:
         Type: S3
