@@ -73,6 +73,9 @@ Resources:
       SchedulingStrategy: REPLICA
       # DeploymentController:
       #   Type: CODE_DEPLOY
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 75
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
@@ -107,6 +110,8 @@ Resources:
       Cpu: 256
       NetworkMode: !If [ Fargate, "awsvpc", "bridge" ]
       ExecutionRoleArn: !Ref TaskExecutionRole
+      RequiresCompatibilities:
+        - FARGATE
       ContainerDefinitions:
         - Name: !Ref ContainerName
           Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}

@@ -125,7 +125,7 @@ Resources:
         GitHubToken: !Ref GitHubToken
         GitHubRepo: !Ref GitHubRepo
         GitHubBranch: !Ref GitHubBranch
-        Repository: !Ref FrontendRepository
+        Repository: !Ref APIRepository
         FolderPath: api
 
   LoadBalancer:
@@ -153,7 +153,7 @@ Resources:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/service.yaml"
       Parameters:
         Cluster: !GetAtt Cluster.Outputs.ClusterName
-        DesiredCount: 0
+        DesiredCount: 1
         LaunchType: !Ref LaunchType
         ContainerName: frontend
         ContainerPort: 3000
@@ -168,7 +168,7 @@ Resources:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/service.yaml"
       Parameters:
         Cluster: !GetAtt Cluster.Outputs.ClusterName
-        DesiredCount: 0
+        DesiredCount: 1
         LaunchType: !Ref LaunchType
         ContainerName: api
         ContainerPort: 8080
@@ -180,7 +180,7 @@ Resources:
 
 Outputs:
   ServiceUrl:
-    Description: The sample service that is being continuously deployed.
+    Description: The load balancer.
     Value: !GetAtt LoadBalancer.Outputs.ServiceUrl
 
   FrontendPipelineUrl:
