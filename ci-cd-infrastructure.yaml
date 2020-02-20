@@ -156,11 +156,13 @@ Resources:
         DesiredCount: 1
         LaunchType: !Ref LaunchType
         ContainerName: frontend
-        ContainerPort: 3000
+        ContainerPort: 80
         TargetGroup: !GetAtt LoadBalancer.Outputs.FrontendTargetGroup
         Repository: !Ref FrontendRepository
         SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
+        VpcId: !GetAtt VPC.Outputs.VpcId
         Subnets: !GetAtt VPC.Outputs.Subnets
+        UseNofileLimit: "true"
 
   APIService:
     Type: AWS::CloudFormation::Stack
@@ -175,6 +177,7 @@ Resources:
         TargetGroup: !GetAtt LoadBalancer.Outputs.APITargetGroup
         Repository: !Ref APIRepository
         SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
+        VpcId: !GetAtt VPC.Outputs.VpcId
         Subnets: !GetAtt VPC.Outputs.Subnets
 
 

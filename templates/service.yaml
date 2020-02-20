@@ -32,17 +32,35 @@ Parameters:
   SourceSecurityGroup:
     Type: AWS::EC2::SecurityGroup::Id
 
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+
   Subnets:
     Type: List<AWS::EC2::Subnet::Id>
+  
+  UseNofileLimit:
+    Type: String
+    Default: "true"
 
 
 Conditions:
   Fargate: !Equals [ !Ref LaunchType, "Fargate" ]
-
   EC2: !Equals [ !Ref LaunchType, "EC2" ]
+  NofileLimit: !Equals [ !Ref UseNofileLimit, "true" ]
 
 
 Resources:
+  ContainerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: !Sub ${AWS::StackName}-secgroup-${ContainerName}
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: !Ref ContainerPort
+          ToPort: !Ref ContainerPort
+          SourceSecurityGroupId: !Ref SourceSecurityGroup
+
   TaskExecutionRole:
     Type: AWS::IAM::Role
     Properties:
@@ -80,7 +98,7 @@ Resources:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
           SecurityGroups:
-            - !Ref SourceSecurityGroup
+            - !Ref ContainerSecurityGroup
           Subnets: !Ref Subnets
       LoadBalancers:
         - ContainerName: !Ref ContainerName
@@ -125,6 +143,13 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-group: !Ref LogGroup
               awslogs-stream-prefix: !Sub ${AWS::StackName}-${ContainerName}
+          Ulimits:
+            - Fn::If:
+              - NofileLimit
+              - Name: nofile
+                SoftLimit: 65535
+                HardLimit: 65535
+              - Ref: AWS::NoValue
 
 
 Outputs:
