@@ -84,18 +84,24 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/ecs-cluster.yaml"
-      #Template: "./templates/ecs-cluster.yaml"
       Parameters:
         LaunchType: !Ref LaunchType
         SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
         Subnets: !GetAtt VPC.Outputs.Subnets
         VpcId: !GetAtt VPC.Outputs.VpcId
 
+  FrontendRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+
+  APIRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Retain
+
   DeploymentPipeline:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/deployment-pipeline.yaml"
-      #Template: "./templates/deployment-pipeline.yaml"
       Parameters:
         Cluster: !GetAtt Cluster.Outputs.ClusterName
         Service: !GetAtt Service.Outputs.Service
@@ -103,12 +109,13 @@ Resources:
         GitHubToken: !Ref GitHubToken
         GitHubRepo: !Ref GitHubRepo
         GitHubBranch: !Ref GitHubBranch
+        FrontendRepository: !Ref FrontendRepository
+        APIRepository: !Ref APIRepository
 
   LoadBalancer:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/load-balancer.yaml"
-      #Template: "./templates/load-balancer.yaml"
       Parameters:
         LaunchType: !Ref LaunchType
         Subnets: !GetAtt VPC.Outputs.Subnets
@@ -118,23 +125,39 @@ Resources:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/vpc.yaml"
-      #Template: "./templates/vpc.yaml"
       Parameters:
         Name: !Ref AWS::StackName
         VpcCIDR: 10.215.0.0/16
         Subnet1CIDR: 10.215.10.0/24
         Subnet2CIDR: 10.215.20.0/24
 
-  Service:
+  FrontendService:
     Type: AWS::CloudFormation::Stack
     Properties:
       TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/service.yaml"
-      #Template: "./templates/service.yaml"
       Parameters:
         Cluster: !GetAtt Cluster.Outputs.ClusterName
+        DesiredCount: 0
         LaunchType: !Ref LaunchType
-        FrontendTargetGroup: !GetAtt LoadBalancer.Outputs.FrontendTargetGroup
-        APITargetGroup: !GetAtt LoadBalancer.Outputs.APITargetGroup
+        ContainerName: frontend
+        ContainerPort: 3000
+        TargetGroup: !GetAtt LoadBalancer.Outputs.FrontendTargetGroup
+        Repository: !Ref FrontendRepository
+        SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
+        Subnets: !GetAtt VPC.Outputs.Subnets
+
+  APIService:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/infrastructure/templates/service.yaml"
+      Parameters:
+        Cluster: !GetAtt Cluster.Outputs.ClusterName
+        DesiredCount: 0
+        LaunchType: !Ref LaunchType
+        ContainerName: api
+        ContainerPort: 8080
+        TargetGroup: !GetAtt LoadBalancer.Outputs.APITargetGroup
+        Repository: !Ref APIRepository
         SourceSecurityGroup: !GetAtt LoadBalancer.Outputs.SecurityGroup
         Subnets: !GetAtt VPC.Outputs.Subnets
 

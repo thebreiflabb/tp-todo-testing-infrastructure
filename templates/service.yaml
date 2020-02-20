@@ -16,11 +16,17 @@ Parameters:
     AllowedValues:
       - Fargate
       - EC2
+  
+  ContainerName:
+    Type: String
 
-  FrontendTargetGroup:
+  ContainerPort:
+    Type: String
+
+  TargetGroup:
     Type: String
   
-  APITargetGroup:
+  Repository:
     Type: String
 
   SourceSecurityGroup:
@@ -71,12 +77,9 @@ Resources:
             - !Ref SourceSecurityGroup
           Subnets: !Ref Subnets
       LoadBalancers:
-        - ContainerName: frontend
-          ContainerPort: 3000
-          TargetGroupArn: !Ref FrontendTargetGroup
-        - ContainerName: api
-          ContainerPort: 8080
-          TargetGroupArn: !Ref APITargetGroup
+        - ContainerName: !Ref ContainerName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
 
   EC2Service:
     Type: AWS::ECS::Service
@@ -87,12 +90,9 @@ Resources:
       TaskDefinition: !Ref TaskDefinition
       LaunchType: EC2
       LoadBalancers:
-        - ContainerName: frontend
-          ContainerPort: 3000
-          TargetGroupArn: !Ref FrontendTargetGroup
-        - ContainerName: api
-          ContainerPort: 8080
-          TargetGroupArn: !Ref APITargetGroup
+        - ContainerName: !Ref ContainerName
+          ContainerPort: !Ref ContainerPort
+          TargetGroupArn: !Ref TargetGroup
 
   TaskDefinition:
     Type: AWS::ECS::TaskDefinition
@@ -105,30 +105,18 @@ Resources:
       NetworkMode: !If [ Fargate, "awsvpc", "bridge" ]
       ExecutionRoleArn: !Ref TaskExecutionRole
       ContainerDefinitions:
-        - Name: frontend
-          Image: frontend
+        - Name: !Ref ContainerName
+          Image: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
           Essential: true
           Memory: 256
           PortMappings:
-            - ContainerPort: 3000
+            - ContainerPort: !Ref ContainerPort
           LogConfiguration:
             LogDriver: awslogs
             Options:
               awslogs-region: !Ref AWS::Region
               awslogs-group: !Ref LogGroup
-              awslogs-stream-prefix: !Sub ${AWS::StackName}-frontend
-        - Name: api
-          Image: api
-          Essential: true
-          Memory: 256
-          PortMappings:
-            - ContainerPort: 8080
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-region: !Ref AWS::Region
-              awslogs-group: !Ref LogGroup
-              awslogs-stream-prefix: !Sub ${AWS::StackName}-api
+              awslogs-stream-prefix: !Sub ${AWS::StackName}-${ContainerName}
 
 
 Outputs:
