@@ -42,11 +42,16 @@ Parameters:
     Type: String
     Default: "true"
 
+  APIBaseURI:
+    Type: String
+    Default: ""
+
 
 Conditions:
   Fargate: !Equals [ !Ref LaunchType, "Fargate" ]
   EC2: !Equals [ !Ref LaunchType, "EC2" ]
   NofileLimit: !Equals [ !Ref UseNofileLimit, "true" ]
+  HasAPIBaseURI: !Not [ !Equals [ !Ref APIBaseURI, "" ] ]
 
 
 Resources:
@@ -60,6 +65,8 @@ Resources:
           FromPort: !Ref ContainerPort
           ToPort: !Ref ContainerPort
           SourceSecurityGroupId: !Ref SourceSecurityGroup
+  
+  
 
   TaskExecutionRole:
     Type: AWS::IAM::Role
@@ -72,6 +79,14 @@ Resources:
             Effect: Allow
             Principal:
               Service: ecs-tasks.amazonaws.com
+      # Policies:
+      #   - PolicyName: root
+      #       PolicyDocument:
+      #         Version: 2012-10-17
+      #         Statement:
+      #           - Effect: Allow
+      #             Action: '*'
+      #             Resource: '*'
       ManagedPolicyArns:
         - arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy
 
@@ -143,6 +158,12 @@ Resources:
               awslogs-region: !Ref AWS::Region
               awslogs-group: !Ref LogGroup
               awslogs-stream-prefix: !Sub ${AWS::StackName}-${ContainerName}
+          Environment:
+            - Fn::If:
+              - HasAPIBaseURI
+              - Name: API_BASE_URI
+                Value: !Ref APIBaseURI
+              - Ref: AWS::NoValue
           Ulimits:
             - Fn::If:
               - NofileLimit

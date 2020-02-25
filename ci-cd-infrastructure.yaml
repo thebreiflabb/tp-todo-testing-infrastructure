@@ -163,6 +163,7 @@ Resources:
         VpcId: !GetAtt VPC.Outputs.VpcId
         Subnets: !GetAtt VPC.Outputs.Subnets
         UseNofileLimit: "true"
+        APIBaseURI: !GetAtt LoadBalancer.Outputs.ServiceUrl
 
   APIService:
     Type: AWS::CloudFormation::Stack
