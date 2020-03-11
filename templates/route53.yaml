@@ -1,0 +1,42 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+
+Parameters:
+  HostedZoneName:
+    Type: String
+
+  HostedZoneID:
+    Type: String
+
+  LoadBalancerDNSName:
+    Type: String
+
+
+Resources:
+  DNSRecord:
+    Type: AWS::Route53::RecordSetGroup
+    Properties:
+      HostedZoneName: !Sub ${HostedZoneName}.
+      Comment: Alias for loadbalancer.
+      RecordSets:
+        - Name: !Ref HostedZoneName
+          Type: A
+          AliasTarget:
+            HostedZoneId: !Ref HostedZoneID
+            DNSName: !Ref LoadBalancerDNSName
+        - Name: !Sub "*.${HostedZoneName}"
+          Type: A
+          AliasTarget:
+            HostedZoneId: !Ref HostedZoneID
+            DNSName: !Ref LoadBalancerDNSName
+        - Name: !Sub "*.staging.${HostedZoneName}"
+          Type: A
+          AliasTarget:
+            HostedZoneId: !Ref HostedZoneID
+            DNSName: !Ref LoadBalancerDNSName
+
+
+# Outputs:
+#   DNSRecord:
+#     Value: !Ref DNSRecord

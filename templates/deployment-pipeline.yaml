@@ -22,15 +22,48 @@ Parameters:
   Cluster:
     Type: String
 
-  Service:
+  ProductionService:
     Type: String
+
+  StagingService:
+    Type: String
+  
+  StagingLink:
+    Type: String
+
+  StagingAPILink:
+    Type: String
+    Default: ""
 
   Repository:
     Type: String
-
-  FolderPath:
+  
+  RunCypressTests:
     Type: String
+    Default: "false"
+  
+  LighthouseCIServerURL:
+    Type: String
+    Default: ""
 
+  LighthouseTestURLs:
+    Type: String
+    Default: ""
+
+  LighthouseGitHubAppToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  LighthouseProjectToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+
+Conditions:
+  HasLighthouseTests: !Not [!Equals [ !Ref LighthouseTestURLs, "" ]]
+  HasCypressTests: !Equals [ !Ref RunCypressTests, "true" ]
 
 Resources:
   CodeBuildServiceRole:
@@ -72,6 +105,10 @@ Resources:
                   - ecr:InitiateLayerUpload
                   - ecr:UploadLayerPart
                   - ecr:CompleteLayerUpload
+              - Resource: !Sub arn:aws:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:/cloudbuild/*
+                Effect: Allow
+                Action:
+                  - secretsmanager:GetSecretValue
 
   CodePipelineServiceRole:
     Type: AWS::IAM::Role
@@ -112,7 +149,11 @@ Resources:
 
   ArtifactBucket:
     Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
+    DeletionPolicy: Delete
+    Properties:
+      AccessControl: Private
+      VersioningConfiguration:
+        Status: Enabled
 
   CodeBuildProject:
     Type: AWS::CodeBuild::Project
@@ -121,7 +162,7 @@ Resources:
         Type: CODEPIPELINE
       Source:
         Type: CODEPIPELINE
-        BuildSpec: !Sub ${FolderPath}/buildspec.yml
+        BuildSpec: buildspec.yml
       Environment:
         ComputeType: BUILD_GENERAL1_SMALL
         Image: aws/codebuild/docker:17.09.0
@@ -132,6 +173,97 @@ Resources:
           - Name: REPOSITORY_URI
             Value: !Sub ${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repository}
       Name: !Sub ${AWS::StackName}-${Name}
+      ServiceRole: !Ref CodeBuildServiceRole
+  
+  GitHubTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Properties:
+      Description: The GitHub token secret
+      Name: /cloudbuild/GITHUB_TOKEN
+      SecretString: !Sub '{"token":"${GitHubToken}"}'
+  
+  LHCITokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: HasLighthouseTests
+    Properties:
+      Description: The Lighthouse CI Server secret for the project
+      Name: /cloudbuild/LHCI_TOKEN
+      SecretString: !Sub '{"token":"${LighthouseProjectToken}"}'
+
+  LHCIGitHubAppTokenSecret:
+    Type: AWS::SecretsManager::Secret
+    Condition: HasLighthouseTests
+    Properties:
+      Description: The GitHub App Token used by the Lighthouse CI Server
+      Name: /cloudbuild/LHCI_GITHUB_APP_TOKEN
+      SecretString: !Sub '{"token":"${LighthouseGitHubAppToken}"}'
+  
+  CodeBuildLighthouseProject:
+    Type: AWS::CodeBuild::Project
+    Condition: HasLighthouseTests
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: lighthouse/buildspec.yml
+      Environment:
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/standard:3.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: LIGHTHOUSE_TEST_URLS
+            Value: !Ref LighthouseTestURLs
+          - Name: LHCI_SERVER_BASE_URL
+            Value: !Ref LighthouseCIServerURL
+          - Name: LHCI_GITHUB_APP_TOKEN
+            Type: SECRETS_MANAGER
+            Value: !Sub ${LHCIGitHubAppTokenSecret}:token
+          - Name: LHCI_TOKEN
+            Type: SECRETS_MANAGER
+            Value: !Sub ${LHCITokenSecret}:token
+          - Name: GITHUB_TOKEN
+            Type: SECRETS_MANAGER
+            Value: !Sub ${GitHubTokenSecret}:token
+          - Name: GITHUB_REPO
+            Value: !Ref GitHubRepo
+          - Name: GITHUB_BRANCH
+            Value: !Ref GitHubBranch
+          - Name: GITHUB_USER
+            Value: !Ref GitHubUser
+      Name: !Sub ${AWS::StackName}-${Name}-Lighthouse
+      ServiceRole: !Ref CodeBuildServiceRole
+
+  CodeBuildCypressProject:
+    Type: AWS::CodeBuild::Project
+    Condition: HasCypressTests
+    Properties:
+      Artifacts:
+        Type: CODEPIPELINE
+      Source:
+        Type: CODEPIPELINE
+        BuildSpec: cypress/buildspec.yml
+      Environment:
+        ComputeType: BUILD_GENERAL1_MEDIUM
+        Image: aws/codebuild/standard:3.0
+        Type: LINUX_CONTAINER
+        EnvironmentVariables:
+          - Name: AWS_DEFAULT_REGION
+            Value: !Ref AWS::Region
+          - Name: GITHUB_TOKEN
+            Type: SECRETS_MANAGER
+            Value: !Sub ${GitHubTokenSecret}:token
+          - Name: GITHUB_REPO
+            Value: !Ref GitHubRepo
+          - Name: GITHUB_BRANCH
+            Value: !Ref GitHubBranch
+          - Name: GITHUB_USER
+            Value: !Ref GitHubUser
+          - Name: API_BASE_URI
+            Value: !Ref StagingAPILink
+      Name: !Sub ${AWS::StackName}-${Name}-Cypress
       ServiceRole: !Ref CodeBuildServiceRole
 
   Pipeline:
@@ -174,7 +306,7 @@ Resources:
               OutputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
-        - Name: Deploy
+        - Name: Staging
           Actions:
             - Name: Deploy
               ActionTypeId:
@@ -184,11 +316,62 @@ Resources:
                 Provider: ECS
               Configuration:
                 ClusterName: !Ref Cluster
-                ServiceName: !Ref Service
+                ServiceName: !Ref StagingService
                 FileName: images.json
               InputArtifacts:
                 - Name: BuildOutput
               RunOrder: 1
+            - Fn::If:
+              - HasLighthouseTests
+              - Name: Lighthouse
+                ActionTypeId:
+                  Category: Test
+                  Owner: AWS
+                  Version: 1
+                  Provider: CodeBuild
+                Configuration:
+                  ProjectName: !Ref CodeBuildLighthouseProject
+                InputArtifacts:
+                  - Name: App
+                RunOrder: 2
+              - Ref: AWS::NoValue
+            - Fn::If:
+              - HasCypressTests
+              - Name: Cypress
+                ActionTypeId:
+                  Category: Test
+                  Owner: AWS
+                  Version: 1
+                  Provider: CodeBuild
+                Configuration:
+                  ProjectName: !Ref CodeBuildCypressProject
+                InputArtifacts:
+                  - Name: App
+                RunOrder: 2
+              - Ref: AWS::NoValue
+        - Name: Production
+          Actions:
+            - Name: Approval
+              ActionTypeId:
+                Category: Approval
+                Owner: AWS
+                Version: 1
+                Provider: Manual
+              Configuration:
+                ExternalEntityLink: !Ref StagingLink
+            - Name: Deploy
+              ActionTypeId:
+                Category: Deploy
+                Owner: AWS
+                Version: 1
+                Provider: ECS
+              Configuration:
+                ClusterName: !Ref Cluster
+                ServiceName: !Ref ProductionService
+                FileName: images.json
+              InputArtifacts:
+                - Name: BuildOutput
+              RunOrder: 2
 
 
 Outputs:

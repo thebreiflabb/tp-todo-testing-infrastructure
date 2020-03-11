@@ -1,0 +1,125 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+
+Description: >
+  This template will connect the service to our root infrastructure
+
+
+Parameters:
+  RootStackName:
+    Type: String
+    Default: todo-testing-root
+
+  RepositorySourceStackName:
+    Type: String
+    Default: ""
+  
+  ImageURI:
+    Type: String
+    Default: ""
+  
+  ServiceName:
+    Type: String
+
+  DesiredCount:
+    Type: String
+
+  DNSPrefix:
+    Type: String
+    Default: ""
+
+  TemplateBucket:
+    Type: String
+    Default: tp-todo-react-testing-infrastructure
+    Description: >
+      The S3 bucket from which to fetch the templates used by this stack.
+
+  Env:
+    Type: String
+    AllowedValues:
+      - production
+      - staging
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Stack Configuration
+        Parameters:
+          - RootStackName
+          - ServiceName
+          - TemplateBucket
+          - Env
+
+Conditions:
+  HasImageURI: !Not [!Equals [ !Ref ImageURI, "" ]]
+  CreateRepository: !And
+    - !Equals [ !Ref Env, "production" ]
+    - !Not [!Condition HasImageURI]
+
+Mappings:
+  ENVDNSPrefix:
+    production:
+      Value: ""
+    staging:
+      Value: "staging."
+
+Resources:
+  Repository:
+    Type: AWS::ECR::Repository
+    Condition: CreateRepository
+    DeletionPolicy: Delete
+
+  Service:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/stacks/apps/${ServiceName}/service.yaml"
+      Parameters:
+        TemplateBucket: !Ref TemplateBucket
+        DNSName:
+          Fn::Sub:
+            - "${DNSPrefix}${ENVPrefix}${Domain}"
+            -
+              ENVPrefix: !FindInMap [ENVDNSPrefix, !Ref Env, Value]
+              Domain:
+                Fn::ImportValue: !Sub "${RootStackName}-DNSName"
+        Cluster:
+          Fn::ImportValue: !Sub "${RootStackName}-FargateCluster"
+        DesiredCount: !Ref DesiredCount
+        ImageURI: !If [HasImageURI, !Ref ImageURI,
+          !Sub ["${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${Repo}",
+            Repo: !If [CreateRepository, !Ref Repository,
+                {"Fn::ImportValue": !Sub "${RepositorySourceStackName}-Repository"}
+            ]
+          ]
+        ]
+        SourceSecurityGroup:
+          Fn::ImportValue: !Sub "${RootStackName}-PublicSecurityGroup"
+        VpcId:
+          Fn::ImportValue: !Sub "${RootStackName}-VpcId"
+        Subnets:
+          Fn::ImportValue: !Sub "${RootStackName}-PublicSubnets"
+        ParentListenerARN:
+          Fn::ImportValue: !Sub "${RootStackName}-LBListenerARN"
+        Env: !Ref Env
+
+Outputs:
+  Service:
+    Description: The Fargate service
+    Value: !GetAtt Service.Outputs.Service
+    Export:
+      Name: !Sub "${AWS::StackName}-Service"
+
+  Repository:
+    Description: The repository name of the service
+    Value: !Ref Repository
+    Condition: CreateRepository
+    Export:
+      Name: !Sub "${AWS::StackName}-Repository"
+  
+  ServiceLink:
+    Description: Link to the service
+    Value: !GetAtt Service.Outputs.ServiceLink
+    Export:
+      Name: !Sub "${AWS::StackName}-ServiceLink"

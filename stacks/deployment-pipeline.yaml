@@ -1,0 +1,160 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+
+Description: >
+  This template creates a CI/CD pipeline for the given service
+
+
+Parameters:
+  Name:
+    Type: String
+
+  RootStackName:
+    Type: String
+
+  ProductionStackName:
+    Type: String
+
+  StagingStackName:
+    Type: String
+
+  StagingAPIStackName:
+    Type: String
+    Default: ""
+
+  TemplateBucket:
+    Type: String
+    Default: tp-todo-react-testing-infrastructure
+    Description: >
+      The S3 bucket from which to fetch the templates used by this stack.
+  
+  GitHubUser:
+    Type: String
+    Description: Your username on GitHub.
+
+  GitHubRepo:
+    Type: String
+    Description: The repo name of the app.
+
+  GitHubBranch:
+    Type: String
+    Default: master
+    Description: The branch of the repo to continuously deploy.
+
+  GitHubToken:
+    Type: String
+    NoEcho: true
+    Description: >
+      Token for the user specified above. (https://github.com/settings/tokens)
+  
+  LighthouseCIServerURL:
+    Type: String
+    Default: ""
+
+  LighthouseTestURLs:
+    Type: String
+    Default: ""
+
+  LighthouseGitHubAppToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+  LighthouseProjectToken:
+    Type: String
+    NoEcho: true
+    Default: ""
+
+Conditions:
+  HasLighthouseTests: !Not [!Equals [ !Ref LighthouseTestURLs, "" ]]
+  HasStagingAPIStackName !Not [!Equals [ !Ref StagingAPIStackName, "" ]]
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterLabels:
+      GitHubUser:
+        default: "User"
+      GitHubRepo:
+        default: "Repo"
+      GitHubBranch:
+        default: "Branch"
+      GitHubToken:
+        default: "Personal Access Token"
+    ParameterGroups:
+      - Label:
+          default: Stack Configuration
+        Parameters:
+          - RootStackName
+          - ProductionStackName
+          - StagingStackName
+          - TemplateBucket
+      - Label:
+          default: GitHub Configuration
+        Parameters:
+          - GitHubRepo
+          - GitHubBranch
+          - GitHubUser
+          - GitHubToken
+      - Label:
+          default: Lighthouse Configuration
+        Parameters:
+          - LighthouseCIServerURL
+          - LighthouseTestURLs
+          - LighthouseGitHubAppToken
+          - LighthouseProjectToken
+
+
+Resources:
+  DeploymentPipeline:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/deployment-pipeline.yaml"
+      Parameters:
+        Name: !Ref Name
+        Cluster:
+          Fn::ImportValue: !Sub "${RootStackName}-FargateCluster"
+        ProductionService:
+          Fn::ImportValue: !Sub "${ProductionStackName}-Service"
+        StagingService:
+          Fn::ImportValue: !Sub "${StagingStackName}-Service"
+        #Service: !GetAtt Service.Outputs.Service
+        GitHubUser: !Ref GitHubUser
+        GitHubToken: !Ref GitHubToken
+        GitHubRepo: !Ref GitHubRepo
+        GitHubBranch: !Ref GitHubBranch
+        StagingLink:
+          Fn::ImportValue: !Sub "${StagingStackName}-ServiceLink"
+        StagingAPILink:
+          Fn::If:
+            - HasStagingAPIStackName
+            - Fn::ImportValue: !Sub "${StagingAPIStackName}-ServiceLink"
+            - Ref: AWS::NoValue
+        Repository:
+          Fn::ImportValue: !Sub "${ProductionStackName}-Repository"
+        LighthouseCIServerURL:
+          Fn::If:
+            - HasLighthouseTests
+            - Ref: LighthouseCIServerURL
+            - Ref: AWS::NoValue
+        LighthouseTestURLs:
+          Fn::If:
+            - HasLighthouseTests
+            - Ref: LighthouseTestURLs
+            - Ref: AWS::NoValue
+        LighthouseGitHubAppToken:
+          Fn::If:
+            - HasLighthouseTests
+            - Ref: LighthouseGitHubAppToken
+            - Ref: AWS::NoValue
+        LighthouseProjectToken:
+          Fn::If:
+            - HasLighthouseTests
+            - Ref: LighthouseProjectToken
+            - Ref: AWS::NoValue
+
+
+Outputs:
+  PipelineUrl:
+    Description: The continuous deployment pipeline in the AWS Management Console.
+    Value: !GetAtt DeploymentPipeline.Outputs.PipelineUrl

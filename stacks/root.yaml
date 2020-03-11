@@ -1,0 +1,125 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+
+
+Description: >
+  This template will set up the infrastructure required to host and run our todo application
+
+
+Parameters:
+  TemplateBucket:
+    Type: String
+    Default: tp-todo-react-testing-infrastructure
+    Description: >
+      The S3 bucket from which to fetch the templates used by this stack.
+
+  DNSName:
+    Type: String
+    Default: todo-testing.cloud
+
+
+Metadata:
+  AWS::CloudFormation::Interface:
+    ParameterGroups:
+      - Label:
+          default: Stack Configuration
+        Parameters:
+          - TemplateBucket
+          - DNSName
+
+
+Resources:
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref AWS::StackName
+
+  VPC:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/vpc.yaml"
+      Parameters:
+        Name: !Ref AWS::StackName
+        VPCCIDR: 10.215.0.0/16
+        PublicSubnet1CIDR: 10.215.10.0/24
+        PublicSubnet2CIDR: 10.215.20.0/24
+        PrivateSubnet1CIDR: 10.215.128.0/24
+        PrivateSubnet2CIDR: 10.215.138.0/24
+  
+  Route53:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/route53.yaml"
+      Parameters:
+        HostedZoneName: !Ref DNSName
+        HostedZoneID: !GetAtt LoadBalancer.Outputs.CanonicalHostedZoneID
+        LoadBalancerDNSName: !GetAtt LoadBalancer.Outputs.DNSName
+
+  Certificate:
+    Type: AWS::CertificateManager::Certificate
+    Properties: 
+      DomainName: !Ref DNSName
+      DomainValidationOptions:
+        - DomainName: !Ref DNSName
+          ValidationDomain: !Ref DNSName
+      SubjectAlternativeNames:
+        - !Sub "*.${DNSName}"
+        - !Sub "*.staging.${DNSName}"
+      ValidationMethod: DNS
+
+  LoadBalancer:
+    Type: AWS::CloudFormation::Stack
+    Properties:
+      TemplateURL: !Sub "https://s3.amazonaws.com/${TemplateBucket}/templates/load-balancer.yaml"
+      Parameters:
+        Name: Front ALB
+        Subnets: !GetAtt VPC.Outputs.PublicSubnets
+        VpcId: !GetAtt VPC.Outputs.VpcId
+        SSLCertificateArn: !Ref Certificate
+
+Outputs:
+  ServiceUrl:
+    Description: The load balancer.
+    Value: !Sub "https://${LoadBalancer.Outputs.DNSName}/"
+
+  VpcId:
+    Description: The VPC ID
+    Value: !GetAtt VPC.Outputs.VpcId
+    Export:
+      Name: !Sub "${AWS::StackName}-VpcId"
+  
+  DNSName:
+    Description: The root DNS name the stack is based on
+    Value: !Ref DNSName
+    Export:
+      Name: !Sub "${AWS::StackName}-DNSName"
+  
+  PublicSubnets:
+    Description: The public subnets to use for public web servers
+    Value: !GetAtt VPC.Outputs.PublicSubnets
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSubnets"
+
+  PrivateSubnets:
+    Description: The private subnets to use for private services
+    Value: !GetAtt VPC.Outputs.PrivateSubnets
+    Export:
+      Name: !Sub "${AWS::StackName}-PrivateSubnets"
+
+  PublicSecurityGroup:
+    Description: The security group ID to use for public web servers
+    Value: !GetAtt LoadBalancer.Outputs.SecurityGroup
+    Export:
+      Name: !Sub "${AWS::StackName}-PublicSecurityGroup"
+
+  LoadBalancerListenerARN:
+    Description: The listener ARN for the load balancer
+    Value: !GetAtt LoadBalancer.Outputs.ListenerARN
+    Export:
+      Name: !Sub "${AWS::StackName}-LBListenerARN"
+  
+  FargateCluster:
+    Description: The fargate cluster
+    Value: !Ref Cluster
+    Export:
+      Name: !Sub "${AWS::StackName}-FargateCluster"

@@ -1,0 +1,12 @@
+aws cloudformation update-stack --stack-name todo-testing-root --template-body file://stacks/root.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/root-params.json
+
+aws cloudformation update-stack --stack-name todo-testing-prod-api --template-body file://stacks/service.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/api-production-params.json
+aws cloudformation update-stack --stack-name todo-testing-staging-api --template-body file://stacks/service.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/api-staging-params.json
+
+aws cloudformation update-stack --stack-name todo-testing-prod-frontend --template-body file://stacks/service.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/frontend-production-params.json
+aws cloudformation update-stack --stack-name todo-testing-staging-frontend --template-body file://stacks/service.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/frontend-staging-params.json
+
+aws cloudformation create-stack --stack-name todo-testing-prod-lighthouse --template-body file://stacks/service.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/lighthouse-production-params.json
+
+aws cloudformation update-stack --stack-name todo-testing-api-pipeline --template-body file://stacks/deployment-pipeline.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/api-pipeline-params.json
+aws cloudformation update-stack --stack-name todo-testing-frontend-pipeline --template-body file://stacks/deployment-pipeline.yaml --capabilities CAPABILITY_NAMED_IAM --parameters file://../stack-params/frontend-pipeline-params.json
