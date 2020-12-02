@@ -68,7 +68,7 @@ Parameters:
 
 Conditions:
   HasLighthouseTests: !Not [!Equals [ !Ref LighthouseTestURLs, "" ]]
-  HasStagingAPIStackName !Not [!Equals [ !Ref StagingAPIStackName, "" ]]
+  HasStagingAPIStackName: !Not [!Equals [ !Ref StagingAPIStackName, "" ]]
 
 Metadata:
   AWS::CloudFormation::Interface:
